@@ -1,4 +1,7 @@
-## Refactoring with effects
+---
+layout: post
+title: Refactoring with effects
+---
 
 I was recently cleaning up some Scala code I'd written a few months ago when I realized I had been structuring code in a very
 confusing way for a very long time. At work, we've been trying to combat the inevitable spaghetti of code that gets written by
