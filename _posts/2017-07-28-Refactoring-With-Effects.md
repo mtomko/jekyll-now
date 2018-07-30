@@ -299,13 +299,21 @@ steps, each of which can be wrapped in a monad. If so, begin by
 describing your function with a monadic for-comprehension. Hopefully
 you will find it easy to express the overall flow of logic this way.
 
-Then, begin refactoring away the individual steps into small, simple
-functions. Remember that for simple operations you can
+I suggest starting with the for-comprehension and writing pseudocode.
+Don't define the individual functions that comprise the steps of the
+for-comprehension until you have filled in the `yield` at the end.
+This is a great time to shuffle steps around and work out exactly what
+arguments are needed and when, and where they are coming from. 
+
+Once the top level function and looks plausible, begin refactoring
+away the individual steps into small, simple functions. Remember that
+for simple operations you can
 [lift](https://typelevel.org/cats/api/cats/Monad.html#lift[A,B](f:A=%3EB):F[A]=%3EF[B])
-a function `A => B` to `F[A] => F[B]` (thanks
+a function `A => B` to `F[A] => F[B]` (thanks,
 [Functor](https://typelevel.org/cats/typeclasses/functor.html)!). This
-makes converting your existing code even easier. Also, don't forget
-that
+makes converting your existing code even easier.
+
+Also, don't forget that
 [Applicative](https://typelevel.org/cats/typeclasses/applicative.html)
 gives you functions like `.mapN`, which let you combine values in a
 monadic context. Suppose you have an `(F[Int], F[Int])` you can do:
