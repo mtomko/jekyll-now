@@ -50,12 +50,12 @@ We can define a simple domain model:
 ```scala
 sealed trait Format
 case object Print extends Format
-case object Ebook extends Format
+case object Digital extends Format
 object Format {
   def fromString(s: String): Option[Format] = ???
 }
 
-seaed trait DownloadType
+sealed trait DownloadType
 case object Epub extends DownloadType
 case object Pdf extends DownloadType
 object DownloadType {
@@ -84,10 +84,11 @@ case class EBook(
     author: String,
     downloadType: DownloadType
 ) extends Book {
-  override val format: Format = EBook
+  override val format: Format = Digital
 }
 
 case class ParseError[T](str: String)
+    extends Exception(s"$str is not a ${classOf[T].getSimpleName}")
 ```
 
 We want to be able to define something akin to
@@ -106,62 +107,89 @@ def findBookById(id: Int): Task[Book] = ???
 One trivial definition might be:
 
 ```scala
-def findBookById(id: Int): Task[Book] = {
-  Task {
-    DB.query(sql"""select * from catalog where id = $id""").map { row =>
-      val id = row[Int]("id")
-      val title = row[String]("title")
-      val author = row[String]("author")
-      val formatStr = row[String]("format")
-      Format.fromString(formatStr) match {
-        case None => Task.raiseError(new ParseError[Format](formatStr))
-        case Some(PrintBook) => 
-          PrintBook(id, title, author)
-        case Some(EBook) =>
-          val downloadTypeStr = row[Option[String]]("download_type")
-          DownloadType.fromString(downloadTypeStr) match {
-            case None => Task.raiseError(new ParseError[DownloadType](downloadStr))
-            case Some(dt) =>
-              EBook(id, title, author, dt)
-          }
-      }
+def findBookById(id: Int): Try[Book] = {
+  // assume queryUnique returns a `Try[Row]`
+  DB.queryUnique(sql"""select * from catalog where id = $id""").flatMap { row =>
+    // pick out the properties every book possesses
+    val id        = row[Int]("id")
+    val title     = row[String]("title")
+    val author    = row[String]("author")
+    val formatStr = row[String]("format")
+     // now start to determine the types - get the format first
+    Format.fromString(formatStr) match {
+      case None =>
+        Failure(new ParseError[Format](formatStr))
+      case Some(Print) =>
+        // for print books, we can construct the book and return immediately
+        Success(PrintBook(id, title, author))
+      case Some(Digital) =>
+        // for digital books we need to handle the download type
+        row[Option[String]]("download_type") match {
+          case None =>
+            Failure(new AssertionError(s"download type not provided for digital book $id"))
+          case Some(downloadStr) =>
+            DownloadType.fromString(downloadStr) match {
+              case None     => Failure(new ParseError[DownloadType](downloadStr))
+              case Some(dt) => Success(EBook(id, title, author, dt))
+            }
+        }
     }
   }
 }
 ```
 
-That is a long function. Previously, I'd have refactored this by a
-strategy I'm going to call "recursive descent", breaking out to a
-new function every time the problem I was trying to solve changed:
+Depending on your perspective, that is arguably a long function. If
+you think it is not so long, pretend that the table has a number of
+other fields that must also be conditionally parsed to construct a
+`Book`. Previously, I might have refactored this by a strategy I'm
+going to call "tail-refactoring", for lack of a better description.
+Basically, each function does a little work, or some error checking,
+and then calls the next appropriate function in the chain.
+
+You can imagine what kind of code will result. Functions are smaller,
+but it's hard to describe what each function does, and functions
+occasionally have to carry along additional parameters that they will
+ignore except to pass deeper into the call chain. Let's take a look at
+an example refactoring:
 
 ```scala
-def findBookById(id: Int): Task[Book] =
-  Task {
-    DB.query(sql"""select * from catalog where id = $id""").map { row =>
-      val id = row[Int]("id")
-      val title = row[String]("title")
-      val author = row[String]("author")
-      val formatStr = row[String]("format")
-      val downloadTypeStr = row[Option[String]]("download_type")
-      extractBook(id, title, author, formatStr, downloadTypeStr)
-    }
+def findBookById(id: Int): Try[Book] =
+  DB.queryUnique(sql"""select * from catalog where id = $id""").flatMap { row =>
+    val id = row[Int]("id")
+    val title = row[String]("title")
+    val author = row[String]("author")
+    val formatStr = row[String]("format")
+    val downloadTypeStr = row[Option[String]]("download_type")
+    extractBook(id, title, author, formatStr, downloadTypeStr)
   }
 
-def extractBook(id: Int, title: String, author: String, formatStr: String, downloadTypeStr: String): Task[Book] = 
-    Format.fromString(formatStr) match {
-      case None => Task.raiseError(new ParseError[Format](formatStr))
-      case Some(PrintBook) => 
-          PrintBook(id, title, author)
-        case Some(EBook) =>
+def extractBook(
+    id: Int,
+    title: String,
+    author: String,
+    formatStr: String,
+    downloadTypeStrOpt: Option[String]): Try[Book] =
+  Format.fromString(formatStr) match {
+    case None => Failure(new ParseError[Format](formatStr))
+    case Some(Print) =>
+      Success(PrintBook(id, title, author))
+    case Some(Digital) =>
+      extractEBook(id, title, author, downloadTypeStrOpt)
+  }
 
-          DownloadType.fromString(downloadTypeStr) match {
-            case None => Task.raiseError(new ParseError[DownloadType](downloadStr))
-            case Some(dt) =>
-              EBook(id, title, author, dt)
-          }
+def extractEBook(
+    id: Int,
+    title: String,
+    author: String,
+    downloadTypeStrOpt: Option[String]): Try[EBook] =
+  downloadTypeStrOpt match {
+    case None => Failure(new AssertionError())
+    case Some(downloadTypeStr) =>
+      DownloadType.fromString(downloadTypeStr) match {
+        case None =>
+          Failure(new ParseError[DownloadType](downloadTypeStr))
+        case Some(dt) =>
+          Success(EBook(id, title, author, dt))
       }
-    }
   }
-}
-
 ```
