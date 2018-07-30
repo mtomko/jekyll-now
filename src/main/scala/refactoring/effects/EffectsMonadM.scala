@@ -14,7 +14,7 @@ def findBookById[F[_]](id: Int)(implicit me: MonadError[F, Exception]): F[Book] 
       case Print =>
         me.pure(PrintBook(id, title, author))
       case Digital =>
-        me.map(parseDownloadType[F](row[String]("downloadType")))(EBook(id, title, author, _))
+        parseDownloadType[F](row[String]("downloadType")).map(EBook(id, title, author, _))
     }
   } yield book
 
