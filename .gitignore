@@ -1,10 +1,20 @@
-_site
-.DS_Store
-.jekyll
-.jekyll-metadata
-.bundle
-.sass-cache
-Gemfile
-Gemfile.lock
-node_modules
-package.json
+# java
+*.class
+*.log
+
+# scala
+.lib/
+dist/*
+target/
+lib_managed/
+src_managed/
+project/boot/
+project/plugins/project/
+
+# intellij/ensime
+*.sc
+.history/
+.cache/
+.idea
+.ensime_cache
+.ensime
