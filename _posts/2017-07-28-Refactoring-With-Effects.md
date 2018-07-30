@@ -197,7 +197,9 @@ As you can see, this form has more manageably-sized functions,
 although they are still a little long. You can also see that the flow
 of control is distributed through all three functions, which means
 understanding the logic enough to modify or test it requires
-understanding all three functions both individually and as a whole.
+understanding all three functions both individually and as a whole. To
+follow the logic, we must trace the functions like a recursive descent
+parser.
 
 ### Refactoring with Monads
 Let's try a different approach to this code and see if we can do any
@@ -234,6 +236,13 @@ dictates the entire flow of control. No function takes more than 2
 arguments. These are testable, understandable functions. This version
 really shows the power of using Monads to sequence computation.
 
+Here we are truly making use of the fact that `Try` has a monad and
+not just another container class. We can simply describe the "happy
+path" and trust `Try` to short-circuit computation if something
+erroneous or unexpected occurs. In that case, `Try` captures the error
+and stops computation there. The code does this without the need for
+explicit branching logic.
+
 ### Abstracting effect type
 Now, let's take this one step further. Here's where we achieve
 buzzword compliance. Let's abstract away from the effect, `Try`, and
@@ -242,7 +251,9 @@ instead make use of
 This lets us use a more diverse set of effect types, from
 [IO](https://typelevel.org/cats-effect/datatypes/io.html) to
 [Task](https://monix.io/docs/3x/eval/task.html), so we can execute our
-function in whatever asynchronous context we wish.
+function in whatever asynchronous context we wish. This has the feel
+of a tagless final strategy (although we aren't worrying about
+describing interpreters here).
 
 Here we go:
 
@@ -278,7 +289,9 @@ it adds a lot of flexibility. In a synchronous context, we could still
 use `Try` or `Either`. In that case, the database call means our
 function isn't referentially transparent. To achieve referential
 transparency, we can use `IO` for the effect type. If our function is
-executing in a highly concurretn context, we could use a `Task`. Our
+executing in a highly concurrent context, we could use a `Task`. Our
 test code can simply use `Id`.
 
-
+### Refactoring strategy
+When faced with a similar refactoring problem, consider whether you can
+break the problem into a sequence of independent steps
