@@ -293,5 +293,41 @@ executing in a highly concurrent context, we could use a `Task`. Our
 test code can simply use `Id`.
 
 ### Refactoring strategy
-When faced with a similar refactoring problem, consider whether you can
-break the problem into a sequence of independent steps
+When faced with a similar refactoring problem, consider whether you
+can break the problem into a sequence of independently executable
+steps, each of which can be wrapped in a monad. If so, begin by
+describing your function with a monadic for-comprehension. Hopefully
+you will find it easy to express the overall flow of logic this way.
+
+Then, begin refactoring away the individual steps into small, simple
+functions. Remember that for simple operations you can
+[lift](https://typelevel.org/cats/api/cats/Monad.html#lift[A,B](f:A=%3EB):F[A]=%3EF[B])
+a function `A => B` to `F[A] => F[B]` (thanks
+[Functor](https://typelevel.org/cats/typeclasses/functor.html)!). This
+makes converting your existing code even easier. Also, don't forget
+that
+[Applicative](https://typelevel.org/cats/typeclasses/applicative.html)
+gives you functions like `.mapN`, which let you combine values in a
+monadic context. Suppose you have an `(F[Int], F[Int])` you can do:
+
+```scala
+val f1: F[Int] = ???
+val f2: F[Int] = ???
+val f12: F[Int] = (f1, f2).mapN { case (x, y) => x + y }
+```
+
+This lets you "fan in" data at any step, while retaining the original
+monadic context.
+
+### Conclusion
+In this post, we have seen how we can use monads as an aid in
+refactoring code to improve both readability and testability. We have
+also demonstrated that we can do this in many cases without needing to
+_a priori_ specify the monad in use. As a result, we gain the
+flexibility to choose the appropriate monad for our application,
+independently of the program logic.
+
+### Licensing
+Unless otherwise noted, all content is licensed under a [Creative
+Commons Attribution 3.0 Unported
+License](https://creativecommons.org/licenses/by/3.0/deed.en_US).
