@@ -140,10 +140,10 @@ other fields that must also be conditionally parsed to construct a
 `Book`.
 
 ### Tail refactoring
-Previously, I might have refactored this by a strategy I'm going to
-call "tail-refactoring", for lack of a better description. Basically,
-each function does a little work, or some error checking, and then
-calls the next appropriate function in the chain.
+One possible approach is a a strategy I'm going to call
+"tail-refactoring", for lack of a better description. Basically, each
+function does a little work or some error checking, and then calls the
+next appropriate function in the chain.
 
 You can imagine what kind of code will result. The functions are
 smaller, but it's hard to describe what each function does, and
@@ -201,9 +201,17 @@ understanding all three functions both individually and as a whole. To
 follow the logic, we must trace the functions like a recursive descent
 parser.
 
+
 ### Refactoring with Monads
-Let's try a different approach to this code and see if we can do any
-better.
+Without throwing exceptions and catching them at the top, it's going
+to be hard to do substantially better than the "tail-refactoring"
+approach, unless we start to make use of the fact that we're working
+with `Try`, a data type that supports `flatMap`. More precisely, `Try`
+has a monad - recall that monads let us model computational effects
+that take place in sequence.
+
+Let's try to factor out smaller functions, each returning `Try`, and
+then use a for-comprehension to specify the sequence of operations:
 
 ```scala
 def findBookById(id: Int): Try[Book] =
@@ -215,15 +223,16 @@ def findBookById(id: Int): Try[Book] =
       case Print =>
         Success(PrintBook(id, title, author))
       case Digital =>
-        parseDownloadType(row[String]("downloadType"))
+        parseDownloadType(row[Option[String]]("download_type"), id)
           .map(EBook(id, title, author, _))
     }
   } yield book
 
 def parseFormat(s: String): Try[Format] = tryParse(s, Format.fromString)
 
-def parseDownloadType(s: String): Try[DownloadType] =
-  tryParse(s, DownloadType.fromString)
+def parseDownloadType(o: Option[String], id: Int): Try[DownloadType] =
+  o.map(tryParse(_, DownloadType.fromString))
+    .getOrElse(Failure(new AssertionError(s"download type not provided for digital book $id")))
 
 def tryParse[A](s: String, parse: String => Option[A]): Try[A] =
   parse(s)
@@ -236,15 +245,15 @@ dictates the entire flow of control. No function takes more than 2
 arguments. These are testable, understandable functions. This version
 really shows the power of using Monads to sequence computation.
 
-Here we are truly making use of the fact that `Try` has a monad and
-not just another container class. We can simply describe the "happy
-path" and trust `Try` to short-circuit computation if something
-erroneous or unexpected occurs. In that case, `Try` captures the error
-and stops computation there. The code does this without the need for
-explicit branching logic.
+Now we are truly making use of the fact that `Try` has a monad and not
+just another container class. We can simply describe the "happy path"
+and trust `Try` to short-circuit computation if something erroneous or
+unexpected occurs. In that case, `Try` captures the error and stops
+computation there. The code does this without the need for explicit
+branching logic.
 
 ### Abstracting effect type
-Now, let's take this one step further. Here's where we achieve
+Now, let's take this one step further - here's where we achieve
 buzzword compliance. Let's abstract away from the effect, `Try`, and
 instead make use of
 [MonadError](https://typelevel.org/cats/api/cats/MonadError.html).
@@ -258,7 +267,7 @@ describing interpreters here).
 Here we go:
 
 ```scala
-def findBookById[F[_]](id: Int)(implicit me: MonadError[F, Exception]): F[Book] =
+def findBookById[F[_]](id: Int)(implicit me: MonadError[F, Throwable]): F[Book] =
   for {
     row <- DB.queryUniqueM[F](sql"""select * from catalog where id = $id""")
     format <- parseFormat[F](row[String]("format"))
@@ -267,30 +276,34 @@ def findBookById[F[_]](id: Int)(implicit me: MonadError[F, Exception]): F[Book] 
       case Print =>
         me.pure(PrintBook(id, title, author))
       case Digital =>
-        parseDownloadType[F](row[String]("downloadType")).map(EBook(id, title, author, _))
+        parseDownloadType[F](row[Option[String]]("downloadType"), id)
+          .map(EBook(id, title, author, _))
     }
   } yield book
 
-def parseFormat[F[_]](s: String)(implicit me: MonadError[F, Exception]): F[Format] =
+def parseFormat[F[_]](s: String)(implicit me: MonadError[F, Throwable]): F[Format] =
   tryParse[F, Format](s, Format.fromString)
 
-def parseDownloadType[F[_]](s: String)(implicit me: MonadError[F, Exception]): F[DownloadType] =
-  tryParse[F, DownloadType](s, DownloadType.fromString)
+def parseDownloadType[F[_]](o: Option[String], id: Int)(
+    implicit me: MonadError[F, Throwable]): F[DownloadType] =
+  o.map(tryParse[F, DownloadType](_, DownloadType.fromString))
+    .getOrElse(
+      me.raiseError(new AssertionError(s"download type not provided for digital book $id")))
 
 def tryParse[F[_], A](s: String, parse: String => Option[A])(
-    implicit me: MonadError[F, Exception]): F[A] =
+    implicit me: MonadError[F, Throwable]): F[A] =
   parse(s)
     .map(me.pure)
     .getOrElse(me.raiseError(new ParseError(s)))
 ```
 
-The code isn't much more complicated than the version with `Try` but
+The code isn't much more complicated than the version using `Try` but
 it adds a lot of flexibility. In a synchronous context, we could still
-use `Try` or `Either`. In that case, the database call means our
-function isn't referentially transparent. To achieve referential
-transparency, we can use `IO` for the effect type. If our function is
-executing in a highly concurrent context, we could use a `Task`. Our
-test code can simply use `Id`.
+use `Try`. In that case, however, the database call is executed
+eagerly, which means the function isn't referentially transparent. We
+can make the function referentially transparent by using a monad such
+as `IO` or `Task` as the effect type and delaying the evaluation of
+the database call until "the end of the universe".
 
 ### Refactoring strategy
 When faced with a similar refactoring problem, consider whether you
@@ -303,7 +316,7 @@ I suggest starting with the for-comprehension and writing pseudocode.
 Don't define the individual functions that comprise the steps of the
 for-comprehension until you have filled in the `yield` at the end.
 This is a great time to shuffle steps around and work out exactly what
-arguments are needed and when, and where they are coming from. 
+arguments are needed and when, and where they are coming from.
 
 Once the top level function and looks plausible, begin refactoring
 away the individual steps into small, simple functions. Remember that
@@ -313,25 +326,11 @@ a function `A => B` to `F[A] => F[B]` (thanks,
 [Functor](https://typelevel.org/cats/typeclasses/functor.html)!). This
 makes converting your existing code even easier.
 
-Also, don't forget that
-[Applicative](https://typelevel.org/cats/typeclasses/applicative.html)
-gives you functions like `.mapN`, which let you combine values in a
-monadic context. Suppose you have an `(F[Int], F[Int])` you can do:
-
-```scala
-val f1: F[Int] = ???
-val f2: F[Int] = ???
-val f12: F[Int] = (f1, f2).mapN { case (x, y) => x + y }
-```
-
-This lets you "fan in" data at any step, while retaining the original
-monadic context.
-
 ### Conclusion
 In this post, we have seen how we can use monads as an aid in
 refactoring code to improve both readability and testability. We have
 also demonstrated that we can do this in many cases without needing to
-_a priori_ specify the monad in use. As a result, we gain the
+specify the monad in use _a priori_. As a result, we gain the
 flexibility to choose the appropriate monad for our application,
 independently of the program logic.
 

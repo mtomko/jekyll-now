@@ -13,15 +13,16 @@ def findBookById(id: Int): Try[Book] =
       case Print =>
         Success(PrintBook(id, title, author))
       case Digital =>
-        parseDownloadType(row[String]("downloadType"))
+        parseDownloadType(row[Option[String]]("download_type"), id)
           .map(EBook(id, title, author, _))
     }
   } yield book
 
 def parseFormat(s: String): Try[Format] = tryParse(s, Format.fromString)
 
-def parseDownloadType(s: String): Try[DownloadType] =
-  tryParse(s, DownloadType.fromString)
+def parseDownloadType(o: Option[String], id: Int): Try[DownloadType] =
+  o.map(tryParse(_, DownloadType.fromString))
+    .getOrElse(Failure(new AssertionError(s"download type not provided for digital book $id")))
 
 def tryParse[A](s: String, parse: String => Option[A]): Try[A] =
   parse(s)
