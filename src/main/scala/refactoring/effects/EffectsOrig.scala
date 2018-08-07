@@ -6,7 +6,7 @@ object EffectsOrig {
 
 def findBookById(id: Int): Try[Book] = {
   // queryUnique returns a `Try[Row]`
-  DB.queryUnique(sql"""select * from catalog where id = $id""").flatMap { row =>
+  DB.unsafeQueryUnique(sql"""select * from catalog where id = $id""").flatMap { row =>
     // pick out the properties every book possesses
     val id = row[Int]("id")
     val title = row[String]("title")

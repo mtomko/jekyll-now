@@ -1,7 +1,5 @@
 package refactoring.effects
 
-case class Sql(s: String) extends AnyVal
-
 sealed trait Format
 case object Print extends Format
 case object Digital extends Format

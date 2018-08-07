@@ -1,6 +1,5 @@
 package refactoring.effects
 
-import cats.Id
 import cats.effect.IO
 import cats.implicits._
 import monix.eval.Task
@@ -8,8 +7,6 @@ import monix.eval.Task
 import scala.util.Try
 
 object EffectsMonadMTest {
-
-  //val x = EffectsMonadM.findBookById[Id](5)
 
   val y = EffectsMonadM.findBookById[Try](5)
 

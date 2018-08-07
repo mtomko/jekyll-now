@@ -7,7 +7,7 @@ object EffectsMonadM {
 
 def findBookById[F[_]](id: Int)(implicit me: MonadError[F, Throwable]): F[Book] =
   for {
-    row <- DB.queryUniqueM[F](sql"""select * from catalog where id = $id""")
+    row <- DB.queryUnique[F](sql"""select * from catalog where id = $id""")
     format <- parseFormat[F](row[String]("format"))
     (id, title, author) = (row[Int]("id"), row[String]("title"), row[String]("author"))
     book <- format match {

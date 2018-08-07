@@ -6,7 +6,7 @@ object EffectsMonad {
 
 def findBookById(id: Int): Try[Book] =
   for {
-    row <- DB.queryUnique(sql"""select * from catalog where id = $id""")
+    row <- DB.unsafeQueryUnique(sql"""select * from catalog where id = $id""")
     format <- parseFormat(row[String]("format"))
     (id, title, author) = (row[Int]("id"), row[String]("title"), row[String]("author"))
     book <- format match {

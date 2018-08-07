@@ -5,7 +5,7 @@ import scala.util.{Failure, Success, Try}
 object EffectsTail {
 
 def findBookById(id: Int): Try[Book] =
-  DB.queryUnique(sql"""select * from catalog where id = $id""").flatMap { row =>
+  DB.unsafeQueryUnique(sql"""select * from catalog where id = $id""").flatMap { row =>
     val id = row[Int]("id")
     val title = row[String]("title")
     val author = row[String]("author")
